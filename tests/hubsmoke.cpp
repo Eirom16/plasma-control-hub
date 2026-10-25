@@ -15,6 +15,7 @@
 #include <QDBusPendingCall>
 #include <QDBusPendingReply>
 #include <QDir>
+#include <QFile>
 #include <QImage>
 #include <QJSValue>
 #include <QQuickWindow>
@@ -95,6 +96,20 @@ int main(int argc, char **argv)
         const QByteArray variable = QByteArray("XDG_") + kind + "_HOME";
         qputenv(variable.constData(), (config.path() + QLatin1Char('/') + QString::fromLatin1(kind).toLower()).toUtf8());
     }
+    if (qEnvironmentVariableIsEmpty("XDG_RUNTIME_DIR")) {
+        const auto runtime = config.path() + QStringLiteral("/runtime");
+        QDir().mkpath(runtime);
+        QFile::setPermissions(runtime, QFile::ReadOwner | QFile::WriteOwner | QFile::ExeOwner);
+        qputenv("XDG_RUNTIME_DIR", runtime.toUtf8());
+    }
+    // A real desktop identity keeps the fixture out of KDE's default @other
+    // history blacklist, including on CI machines without Konsole installed.
+    const auto applications = qEnvironmentVariable("XDG_DATA_HOME") + QStringLiteral("/applications");
+    QDir().mkpath(applications);
+    QFile identity(applications + QStringLiteral("/org.eirom.ControlHubSmoke.desktop"));
+    if (!identity.open(QIODevice::WriteOnly)) return 2;
+    identity.write("[Desktop Entry]\nType=Application\nName=Control Hub\nExec=/bin/true\nIcon=dialog-information\n");
+    identity.close();
     QApplication app(argc, argv);
     qInstallMessageHandler(logMessage);
     app.setApplicationName(QStringLiteral("controlhub-smoke"));
@@ -212,7 +227,7 @@ int main(int argc, char **argv)
             }
         }
         auto notification = QDBusMessage::createMethodCall(QStringLiteral("org.freedesktop.Notifications"), QStringLiteral("/org/freedesktop/Notifications"), QStringLiteral("org.freedesktop.Notifications"), QStringLiteral("Notify"));
-        notification.setArguments({QStringLiteral("Control Hub"), uint(0), QStringLiteral("dialog-information"), QStringLiteral("Notificaciones de KDE"), QStringLiteral("El historial original se muestra desde el borde derecho."), QStringList(), QVariantMap{{QStringLiteral("urgency"), QVariant::fromValue(static_cast<uchar>(1))}, {QStringLiteral("desktop-entry"), QStringLiteral("org.kde.konsole")}}, 0});
+        notification.setArguments({QStringLiteral("Control Hub"), uint(0), QStringLiteral("dialog-information"), QStringLiteral("Notificaciones de KDE"), QStringLiteral("El historial original se muestra desde el borde derecho."), QStringList(), QVariantMap{{QStringLiteral("urgency"), QVariant::fromValue(static_cast<uchar>(1))}, {QStringLiteral("desktop-entry"), QStringLiteral("org.eirom.ControlHubSmoke")}}, 0});
         auto pendingNotification = QDBusConnection::sessionBus().asyncCall(notification);
         QTest::qWait(300);
         QDBusPendingReply<uint> notificationReply(pendingNotification);
