@@ -28,7 +28,8 @@ include_directories(${CMAKE_BINARY_DIR} ${CMAKE_CURRENT_SOURCE_DIR}/libdbusmenuq
 # protocol headers it includes. Generate these from KDE's pinned protocol XML;
 # the implementation and surface ownership remain in libplasma.
 find_program(WAYLAND_SCANNER wayland-scanner REQUIRED)
-find_program(QT_WAYLAND_SCANNER NAMES qtwaylandscanner HINTS /usr/lib/qt6/libexec REQUIRED)
+find_package(Qt6WaylandScannerTools REQUIRED)
+get_target_property(QT_WAYLAND_SCANNER Qt6::qtwaylandscanner LOCATION)
 set(CONTROLHUB_SHELL_PROTOCOL ${CMAKE_CURRENT_SOURCE_DIR}/protocols/plasma-shell.xml)
 execute_process(COMMAND ${WAYLAND_SCANNER} client-header ${CONTROLHUB_SHELL_PROTOCOL}
     ${CMAKE_BINARY_DIR}/wayland-plasma-shell-client-protocol.h COMMAND_ERROR_IS_FATAL ANY)
