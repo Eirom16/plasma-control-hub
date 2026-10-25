@@ -11,7 +11,7 @@ jobs:
     steps:
       - name: Install KDE and build dependencies
         run: pacman -Syu --noconfirm --needed git cmake ninja extra-cmake-modules qt6-base qt6-declarative qt6-tools qt6-wayland wayland plasma-workspace plasma-nm bluedevil plasma-pa powerdevil gettext dbus python libxtst xorg-server-xvfb xorg-xauth
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
       - name: Configure
         run: cmake -S . -B build -G Ninja -DCMAKE_BUILD_TYPE=Release -DBUILD_TESTING=ON
       - name: Build
@@ -22,4 +22,4 @@ jobs:
           QT_QUICK_BACKEND: software
         run: ctest --test-dir build --output-on-failure
       - name: Check whitespace
-        run: git diff --check
+        run: git -c safe.directory="$GITHUB_WORKSPACE" -C "$GITHUB_WORKSPACE" diff --check
