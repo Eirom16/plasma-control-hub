@@ -9,6 +9,12 @@
 #include "config-X11.h"
 #include "debug.h"
 #include "systemtray.h"
+#include "notificationdrawer.h"
+#include <QQmlEngine>
+#include <PlasmaQuick/AppletQuickItem>
+#include <KLocalizedString>
+#include <KConfigLoader>
+#include <QActionGroup>
 
 #include "plasmoidregistry.h"
 #include "sortedsystemtraymodel.h"
@@ -110,6 +116,8 @@ static void showSystemTrayMenuWayland(QMenu *menu, QQuickItem *trayItem, Plasma:
 SystemTray::SystemTray(QObject *parent, const KPluginMetaData &data, const QVariantList &args)
     : Plasma::Containment(parent, data, args)
 {
+    static const int drawerType = qmlRegisterType<NotificationDrawer>("org.eirom.plasma.controlhub", 1, 0, "NotificationDrawer");
+    Q_UNUSED(drawerType)
     setHasConfigurationInterface(true);
     setContainmentDisplayHints(Plasma::Types::ContainmentDrawsPlasmoidHeading | Plasma::Types::ContainmentForcesSquarePlasmoids);
 }
@@ -532,6 +540,11 @@ void SystemTray::activate(const QString &service, QPoint pos, QQuickItem *status
     });
 }
 
+void SystemTray::setItemVisibility(const QString &itemId, const QString &mode)
+{
+    if (m_settings) m_settings->setItemVisibility(itemId, mode);
+}
+
 void SystemTray::secondaryActivate(const QString &service, QPoint pos)
 {
     const auto source = StatusNotifierItemHost::self()->itemForService(service);
@@ -564,7 +577,37 @@ void SystemTray::openContextMenu(const QString &service, QPoint pos, QQuickItem 
         &StatusNotifierItemSource::contextMenuReady,
         this,
         [this, statusNotifierIcon = QPointer<QQuickItem>{statusNotifierIcon}](QMenu *menu) {
-            if (statusNotifierIcon && menu && !menu->isEmpty()) {
+            if (statusNotifierIcon && menu) {
+                const QString itemId = statusNotifierIcon->property("itemId").toString();
+                auto *visibilityMenu = menu->findChild<QMenu *>(QStringLiteral("ControlHubVisibilityMenu"));
+                if (!visibilityMenu) {
+                    menu->addSeparator();
+                    visibilityMenu = menu->addMenu(i18n("Tray icon visibility"));
+                    visibilityMenu->setObjectName(QStringLiteral("ControlHubVisibilityMenu"));
+                }
+                if (auto *oldGroup = visibilityMenu->findChild<QActionGroup *>(QStringLiteral("visibilityGroup"))) delete oldGroup;
+                visibilityMenu->clear();
+                auto *group = new QActionGroup(visibilityMenu);
+                group->setObjectName(QStringLiteral("visibilityGroup"));
+                group->setExclusive(true);
+                const auto shown = configScheme()->property(QStringLiteral("shownItems")).toStringList();
+                const auto hidden = configScheme()->property(QStringLiteral("hiddenItems")).toStringList();
+                const QString current = shown.contains(itemId) ? QStringLiteral("shown") : hidden.contains(itemId) ? QStringLiteral("hidden") : QStringLiteral("auto");
+                const QList<QPair<QString, QString>> choices = {
+                    {QStringLiteral("shown"), i18n("Show in panel")},
+                    {QStringLiteral("hidden"), i18n("Keep in hidden icons")},
+                    {QStringLiteral("auto"), i18n("Automatic")},
+                };
+                for (const auto &[mode, label] : choices) {
+                    auto *action = visibilityMenu->addAction(label);
+                    group->addAction(action);
+                    action->setCheckable(true);
+                    action->setChecked(current == mode);
+                    connect(action, &QAction::triggered, this, [this, itemId, mode]() {
+                        QMetaObject::invokeMethod(PlasmaQuick::AppletQuickItem::itemForApplet(this), "setTrayVisibility",
+                                                  Q_ARG(QVariant, itemId), Q_ARG(QVariant, mode));
+                    });
+                }
                 KAcceleratorManager::manage(menu);
                 showSystemTrayMenuWayland(menu, statusNotifierIcon, location());
             }

@@ -18,8 +18,8 @@ import org.kde.plasma.plasmoid
 Item {
     id: popup
 
-    Layout.minimumWidth: Kirigami.Units.gridUnit * 24
-    Layout.minimumHeight: Kirigami.Units.gridUnit * 24
+    Layout.minimumWidth: Kirigami.Units.gridUnit * 26
+    Layout.minimumHeight: Kirigami.Units.gridUnit * 22
 
     property alias hiddenLayout: hiddenItemsView.layout
     property alias plasmoidContainer: container
@@ -53,7 +53,7 @@ Item {
 
             PlasmaComponents.ToolButton {
                 id: backButton
-                visible: systemTrayState.activeApplet && systemTrayState.activeApplet.expanded && (popup.hiddenLayout.itemCount > 0)
+                visible: systemTrayState.activeApplet !== null
                 icon.name: mirrored ? "go-previous-symbolic-rtl" : "go-previous-symbolic"
 
                 display: PlasmaComponents.AbstractButton.IconOnly
@@ -73,7 +73,7 @@ Item {
                 leftPadding: backButton.visible ? 0 : Kirigami.Units.largeSpacing
 
                 level: 1
-                text: systemTrayState.activeApplet ? systemTrayState.activeApplet.plasmoid.title : i18n("Status and Notifications")
+                text: systemTrayState.activeApplet ? systemTrayState.activeApplet.plasmoid.title : (root.popupMode === "controls" ? i18n("Control Center") : i18n("Hidden applications"))
                 maximumLineCount: 1
                 textFormat: Text.PlainText
                 elide: Text.ElideRight
@@ -250,6 +250,14 @@ Item {
             }
 
             PlasmaComponents.ToolButton {
+                id: editButton
+                visible: root.popupMode === "controls" && !systemTrayState.activeApplet
+                text: root.editing ? i18n("Done") : i18n("Edit")
+                icon.name: root.editing ? "dialog-ok-apply" : "document-edit"
+                onClicked: root.editing = !root.editing
+            }
+
+            PlasmaComponents.ToolButton {
                 id: pinButton
                 checkable: true
                 checked: Plasmoid.configuration.pin
@@ -275,7 +283,7 @@ Item {
             Layout.fillWidth: true
             Layout.fillHeight: true
             Layout.topMargin: Kirigami.Units.smallSpacing
-            visible: !systemTrayState.activeApplet
+            visible: !systemTrayState.activeApplet && root.popupMode === "applications"
 
             KeyNavigation.up: pinButton
 
@@ -284,6 +292,35 @@ Item {
                     layout.forceActiveFocus();
                     systemTrayState.oldVisualIndex = systemTrayState.newVisualIndex = -1;
                 }
+            }
+        }
+
+        Loader {
+            Layout.fillWidth: true
+            Layout.fillHeight: true
+            visible: !systemTrayState.activeApplet && root.popupMode === "controls"
+            active: visible && systemTrayState.expanded
+            sourceComponent: ControlCenter { hub: root }
+        }
+
+        // Fixed quick adjustments stay below the scrolling tile area.
+        ColumnLayout {
+            Layout.fillWidth: true
+            Layout.margins: Kirigami.Units.smallSpacing
+            spacing: Kirigami.Units.smallSpacing
+            visible: root.popupMode === "controls" && !root.editing && !systemTrayState.activeApplet
+            Kirigami.Separator { Layout.fillWidth: true }
+            Loader {
+                Layout.fillWidth: true
+                active: parent.visible && systemTrayState.expanded && Plasmoid.configuration.selectedControls.includes("org.kde.plasma.brightness") && !!root.hosts["org.kde.plasma.brightness"]
+                source: "BrightnessControl.qml"
+                onLoaded: item.hub = root
+            }
+            Loader {
+                Layout.fillWidth: true
+                active: parent.visible && systemTrayState.expanded && Plasmoid.configuration.selectedControls.includes("org.kde.plasma.volume") && !!root.hosts["org.kde.plasma.volume"]
+                source: "VolumeControl.qml"
+                onLoaded: item.hub = root
             }
         }
 

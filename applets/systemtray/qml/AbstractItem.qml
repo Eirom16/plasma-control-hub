@@ -18,6 +18,7 @@ import org.kde.plasma.plasmoid
 
 PlasmaCore.ToolTipArea {
     id: abstractItem
+    objectName: "trayItem_" + itemId
 
     required property int index
     required property var model
@@ -35,6 +36,21 @@ PlasmaCore.ToolTipArea {
     readonly property alias iconContainer: iconContainer
     readonly property bool inHiddenLayout: effectiveStatus === PlasmaCore.Types.PassiveStatus
     readonly property bool inVisibleLayout: effectiveStatus === PlasmaCore.Types.ActiveStatus
+
+    Drag.active: trayDrag.active
+    Drag.dragType: Drag.Automatic
+    Drag.mimeData: ({ "application/x-controlhub-tray-id": abstractItem.itemId })
+    Drag.supportedActions: Qt.MoveAction
+    Drag.proposedAction: Qt.MoveAction
+    Drag.source: abstractItem
+    Drag.keys: ["application/x-controlhub-tray-id"]
+    Drag.hotSpot.x: trayDrag.centroid.position.x
+    Drag.hotSpot.y: trayDrag.centroid.position.y
+    DragHandler {
+        id: trayDrag
+        target: null
+        acceptedButtons: Qt.LeftButton
+    }
 
     property bool effectivePressed: false
 
@@ -155,6 +171,12 @@ PlasmaCore.ToolTipArea {
                     case Qt.Key_Return:
                     case Qt.Key_Select:
                         abstractItem.activated(Qt.point(width/2, height/2));
+                        break;
+                    case Qt.Key_F10:
+                        if (event.modifiers & Qt.ShiftModifier) {
+                            root.setTrayVisibility(abstractItem.itemId, abstractItem.inVisibleLayout ? "hidden" : "shown");
+                            event.accepted = true;
+                        }
                         break;
                     case Qt.Key_Menu:
                         abstractItem.contextMenu(null);

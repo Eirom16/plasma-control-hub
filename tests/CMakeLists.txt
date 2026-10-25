@@ -1,0 +1,13 @@
+# SPDX-License-Identifier: BSD-3-Clause
+if(BUILD_TESTING)
+    add_executable(controlhub-smoke hubsmoke.cpp traywatcher.h)
+    target_compile_definitions(controlhub-smoke PRIVATE CONTROLHUB_TEST_DIR="${CMAKE_CURRENT_SOURCE_DIR}")
+    target_link_libraries(controlhub-smoke PRIVATE Qt::Widgets Qt::Quick Qt::Test Qt::DBus Plasma::Plasma Plasma::PlasmaQuick KF6::I18n KF6::Package KF6::ConfigGui KF6::StatusNotifierItem PW::LibNotificationManager)
+    add_dependencies(controlhub-smoke org.eirom.plasma.controlhub)
+    find_program(QMLTESTRUNNER NAMES qmltestrunner qmltestrunner6 HINTS /usr/lib/qt6/bin REQUIRED)
+    add_test(NAME control-layout COMMAND ${QMLTESTRUNNER} -input ${CMAKE_CURRENT_SOURCE_DIR}/qml)
+    set_tests_properties(control-layout PROPERTIES ENVIRONMENT "QT_QPA_PLATFORM=offscreen;QT_QUICK_BACKEND=software")
+    find_program(XVFB_RUN xvfb-run REQUIRED)
+    add_test(NAME hub-smoke COMMAND ${XVFB_RUN} -a -s "-screen 0 1440x900x24" dbus-run-session --config-file=${CMAKE_CURRENT_SOURCE_DIR}/session-bus.conf -- $<TARGET_FILE:controlhub-smoke>)
+    set_tests_properties(hub-smoke PROPERTIES ENVIRONMENT "QT_FORCE_STDERR_LOGGING=1;QT_QPA_PLATFORM=xcb;QT_QUICK_BACKEND=software;QT_PLUGIN_PATH=${CMAKE_BINARY_DIR}/lib" TIMEOUT 60)
+endif()

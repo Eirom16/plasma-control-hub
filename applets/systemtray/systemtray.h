@@ -77,6 +77,7 @@ public:
     Q_INVOKABLE void openContextMenu(const QString &service, QPoint pos, QQuickItem *statusNotifierIcon);
 
     Q_INVOKABLE void scroll(const QString &service, int delta, const QString &direction);
+    Q_INVOKABLE void setItemVisibility(const QString &itemId, const QString &mode);
 
 private Q_SLOTS:
     // synchronizes with configuration and deletes not allowed applets

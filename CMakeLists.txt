@@ -1,0 +1,42 @@
+# SPDX-License-Identifier: BSD-3-Clause
+cmake_minimum_required(VERSION 3.28)
+project(PlasmaControlHub VERSION 0.1.0 LANGUAGES CXX)
+set(CMAKE_CXX_STANDARD 20)
+set(CMAKE_CXX_STANDARD_REQUIRED ON)
+find_package(ECM 6.31 REQUIRED NO_MODULE)
+list(APPEND CMAKE_MODULE_PATH ${ECM_MODULE_PATH})
+include(KDEInstallDirs6)
+include(KDECMakeSettings)
+include(KDECompilerSettings NO_POLICY_SCOPE)
+include(ECMQtDeclareLoggingCategory)
+include(ECMAddTests)
+include(CTest)
+find_package(Qt6 6.10 REQUIRED COMPONENTS Core DBus Gui Quick Widgets Test)
+find_package(Qt6GuiPrivate REQUIRED)
+find_package(KF6 6.31 REQUIRED COMPONENTS Config CoreAddons IconThemes I18n KIO JobWidgets Service ItemModels WindowSystem XmlGui StatusNotifierItem Package)
+find_package(Plasma 6.8 REQUIRED)
+find_package(PlasmaQuick 6.8 REQUIRED)
+find_package(LibNotificationManager REQUIRED CONFIG)
+set(CMAKE_AUTOMOC ON)
+set(CMAKE_AUTOUIC ON)
+set(CMAKE_AUTORCC ON)
+set(CMAKE_LIBRARY_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/lib)
+set(CMAKE_RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
+file(WRITE ${CMAKE_BINARY_DIR}/config-X11.h "// No additional X11 build flags required.\n")
+include_directories(${CMAKE_BINARY_DIR} ${CMAKE_CURRENT_SOURCE_DIR}/libdbusmenuqt)
+# libplasma installs its native shell integration header but not the generated
+# protocol headers it includes. Generate these from KDE's pinned protocol XML;
+# the implementation and surface ownership remain in libplasma.
+find_program(WAYLAND_SCANNER wayland-scanner REQUIRED)
+find_program(QT_WAYLAND_SCANNER NAMES qtwaylandscanner HINTS /usr/lib/qt6/libexec REQUIRED)
+set(CONTROLHUB_SHELL_PROTOCOL ${CMAKE_CURRENT_SOURCE_DIR}/protocols/plasma-shell.xml)
+execute_process(COMMAND ${WAYLAND_SCANNER} client-header ${CONTROLHUB_SHELL_PROTOCOL}
+    ${CMAKE_BINARY_DIR}/wayland-plasma-shell-client-protocol.h COMMAND_ERROR_IS_FATAL ANY)
+execute_process(COMMAND ${QT_WAYLAND_SCANNER} client-header ${CONTROLHUB_SHELL_PROTOCOL}
+    OUTPUT_FILE ${CMAKE_BINARY_DIR}/qwayland-plasma-shell.h COMMAND_ERROR_IS_FATAL ANY)
+set_property(DIRECTORY APPEND PROPERTY CMAKE_CONFIGURE_DEPENDS ${CONTROLHUB_SHELL_PROTOCOL})
+add_subdirectory(libdbusmenuqt)
+add_subdirectory(applets/systemtray)
+add_subdirectory(tests)
+
+ki18n_install(po)

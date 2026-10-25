@@ -2,437 +2,376 @@
     SPDX-FileCopyrightText: 2011 Marco Martin <mart@kde.org>
     SPDX-FileCopyrightText: 2020 Konrad Materka <materka@gmail.com>
     SPDX-FileCopyrightText: 2026 Nathaniel Krebs <areyoufeelingitnowmrkrebs@gmail.com>
-
+    SPDX-FileCopyrightText: 2026 Eirom16
     SPDX-License-Identifier: LGPL-2.0-or-later
 */
 pragma ComponentBehavior: Bound
 
 import QtQuick
 import QtQuick.Layouts
-
-import org.kde.draganddrop as DnD
 import org.kde.kirigami as Kirigami
 import org.kde.kitemmodels as KItemModels
-import org.kde.ksvg as KSvg
 import org.kde.plasma.core as PlasmaCore
+import org.kde.plasma.components as PlasmaComponents
 import org.kde.plasma.plasmoid
+import org.eirom.plasma.controlhub 1.0
+import "ControlLayout.js" as ControlLayout
 
 ContainmentItem {
     id: root
-
     readonly property bool vertical: Plasmoid.formFactor === PlasmaCore.Types.Vertical
     readonly property bool reverseLayout: Plasmoid.configuration.reverseIconOrder
-
-    Layout.minimumWidth: vertical ? Kirigami.Units.iconSizes.small : mainLayout.implicitWidth + Kirigami.Units.smallSpacing
-    Layout.minimumHeight: vertical ? mainLayout.implicitHeight + Kirigami.Units.smallSpacing : Kirigami.Units.iconSizes.small
-
-    LayoutMirroring.enabled: !vertical && ((Application.layoutDirection === Qt.RightToLeft) !== reverseLayout)
-    LayoutMirroring.childrenInherit: true
-
     readonly property alias systemTrayState: systemTrayState
     readonly property alias itemSize: tasksGrid.itemSize
     readonly property alias visibleLayout: tasksGrid
     readonly property alias hiddenLayout: expandedRepresentation.hiddenLayout
-    readonly property bool oneRowOrColumn: tasksGrid.rowsOrColumns === 1
-
     readonly property alias hiddenModel: hiddenModel
+    readonly property bool oneRowOrColumn: tasksGrid.rowsOrColumns === 1
+    property string popupMode: "controls"
+    property bool editing: false
+    property bool notificationsOpen: false
+    property var hosts: ({})
+    property var controlEntries: []
+    readonly property var notificationsApplet: hosts["org.kde.plasma.notifications"]?.applet ?? null
+    readonly property int unreadCount: notificationsApplet?.unreadCount ?? 0
 
-    Component.onCompleted: {
-        // We need all the plasmoiditems to be there for correct working of shortcuts.
-        // Instantiators create the plasmoiditems: ensure this is done after
-        // this containmentitem actually  exists so they can be immediately parented properly
-        // set active and not the model, as this will cause an assert deep in Qt
-        activeInstantiator.active = true;
-        hiddenInstantiator.active = true;
+    Layout.minimumWidth: mainLayout.implicitWidth
+    Layout.minimumHeight: mainLayout.implicitHeight
+    LayoutMirroring.enabled: !vertical && ((Application.layoutDirection === Qt.RightToLeft) !== reverseLayout)
+    LayoutMirroring.childrenInherit: true
+
+    Timer { id: controlsRefresh; interval: 0; onTriggered: root.rebuildControls() }
+    function refreshControls() { controlsRefresh.restart(); }
+    function rebuildControls() {
+        const entries = Object.keys(hosts).filter(id => id !== "org.kde.plasma.notifications").map(id => ({
+            id: id, title: hosts[id].displayText, icon: hosts[id].decoration, applet: hosts[id].applet ?? null
+        }));
+        controlEntries = ControlLayout.sorted(entries, Plasmoid.configuration.controlOrder);
+    }
+    function registerHost(id, host) {
+        if (!id || !host) return;
+        const next = Object.assign({}, hosts);
+        next[id] = host;
+        hosts = next;
+        refreshControls();
+    }
+    function unregisterHost(id, host) {
+        if (hosts[id] !== host) return;
+        const next = Object.assign({}, hosts);
+        delete next[id];
+        hosts = next;
+        refreshControls();
+    }
+    function setControlVisible(id, visible) {
+        const selected = Plasmoid.configuration.selectedControls.filter(value => value !== id);
+        if (visible) selected.push(id);
+        Plasmoid.configuration.selectedControls = selected;
+        // Enabling a tile must not change the service's actual on/off state.
+        if (visible && !Plasmoid.configuration.extraItems.includes(id)) {
+            Plasmoid.configuration.extraItems = Plasmoid.configuration.extraItems.concat([id]);
+        }
+    }
+    function moveControl(id, before) {
+        const order = controlEntries.map(entry => entry.id);
+        Plasmoid.configuration.controlOrder = ControlLayout.move(order, id, before);
+        refreshControls();
+    }
+    function setTrayVisibility(id, mode) {
+        Plasmoid.setItemVisibility(id, mode);
+    }
+    function showHome(mode) {
+        notificationsOpen = false;
+        if (notificationsApplet) notificationsApplet.expanded = false;
+        systemTrayState.setActiveApplet(null);
+        popupMode = mode;
+        editing = false;
+        systemTrayState.expanded = true;
+    }
+    function toggleHome(mode) {
+        if (systemTrayState.expanded && popupMode === mode && !systemTrayState.activeApplet) {
+            systemTrayState.expanded = false;
+        } else {
+            showHome(mode);
+        }
+    }
+    function openControl(applet) {
+        if (!applet) return;
+        // Some tray applets are direct actions rather than expandable panels.
+        if (!applet.fullRepresentation || applet.preferredRepresentation === applet.fullRepresentation) {
+            const configure = applet.plasmoid.internalAction("configure");
+            if (configure?.enabled) configure.trigger();
+            else applet.plasmoid.activated();
+            return;
+        }
+        notificationsOpen = false;
+        if (notificationsApplet) notificationsApplet.expanded = false;
+        popupMode = "controls";
+        editing = false;
+        systemTrayState.setActiveApplet(applet);
+    }
+    function openNotifications() {
+        if (!notificationsApplet) return;
+        systemTrayState.expanded = false;
+        notificationsOpen = true;
+        notificationsApplet.expanded = true;
+        notificationContent.adopt();
     }
 
     Connections {
+        target: Plasmoid.configuration
+        function onControlOrderChanged() { root.refreshControls(); }
+    }
+    Connections {
         target: Plasmoid
-        function onActivated() {
-            systemTrayState.expanded = !systemTrayState.expanded;
-        }
+        function onActivated() { root.toggleHome("controls"); }
     }
 
     KItemModels.KSortFilterProxyModel {
         id: activeModel
-        filterRoleName: "effectiveStatus"
-        dynamicSortFilter: !systemTrayState.expanded
-        filterRowCallback: (sourceRow, sourceParent) => {
-            let value = sourceModel.data(sourceModel.index(sourceRow, 0, sourceParent), filterRole);
-            return value === PlasmaCore.Types.ActiveStatus;
+        filterRowCallback: (row, parent) => {
+            const index = sourceModel.index(row, 0, parent);
+            return sourceModel.data(index, Qt.UserRole + 1) !== "Plasmoid"
+                && sourceModel.data(index, Qt.UserRole + 6) === PlasmaCore.Types.ActiveStatus;
         }
-        Component.onCompleted: sourceModel = Plasmoid.systemTrayModel // avoid unnecessary binding, it causes loops
+        Component.onCompleted: sourceModel = Plasmoid.systemTrayModel
     }
-
     KItemModels.KSortFilterProxyModel {
         id: hiddenModel
-        filterRoleName: "effectiveStatus"
-        dynamicSortFilter: !systemTrayState.expanded
-        filterRowCallback: (sourceRow, sourceParent) => {
-            let value = sourceModel.data(sourceModel.index(sourceRow, 0, sourceParent), filterRole);
-            return value === PlasmaCore.Types.PassiveStatus
+        filterRowCallback: (row, parent) => {
+            const index = sourceModel.index(row, 0, parent);
+            return sourceModel.data(index, Qt.UserRole + 1) !== "Plasmoid"
+                && sourceModel.data(index, Qt.UserRole + 6) === PlasmaCore.Types.PassiveStatus;
         }
-        Component.onCompleted: sourceModel = Plasmoid.systemTrayModel // avoid unnecessary binding, it causes loops
+        Component.onCompleted: sourceModel = Plasmoid.systemTrayModel
+    }
+    KItemModels.KSortFilterProxyModel {
+        id: appletsModel
+        filterRoleName: "itemType"
+        filterString: "Plasmoid"
+        Component.onCompleted: sourceModel = Plasmoid.systemTrayModel
     }
 
-    // Re-evaluate filters when the popup closes to apply any status changes
-    // that accumulated while the popup was open
-    Connections {
-        target: systemTrayState
-        function onExpandedChanged() {
-            if (!systemTrayState.expanded) {
-                activeModel.invalidateFilter();
-                hiddenModel.invalidateFilter();
-            }
-        }
-    }
-
+    // One owner per upstream applet. Its original full representation is moved
+    // into the details view only while needed, retaining actions and shortcuts.
     Instantiator {
-        id: hiddenInstantiator
-        // It's important that those are inactive at creation time
-        // to not create plasmoiditems too soon
+        id: appletHosts
         active: false
-        model: hiddenModel
-        delegate: Connections {
-            required property QtObject applet
-            required property int row
-            target: applet
-            function onExpandedChanged(expanded: bool) {
-                if (expanded) {
-                    systemTrayState.setActiveApplet(applet, row)
+        model: appletsModel
+        delegate: Item {
+            id: host
+            required property string itemId
+            required property string displayText
+            required property var decoration
+            required property var applet
+            parent: appletStorage
+            visible: false
+            function adopt() {
+                if (itemId === "org.kde.plasma.notifications") {
+                    // Keep the original compact item's screen geometry at the
+                    // visible button, so KDE's "close to widget" toasts anchor
+                    // correctly even though we draw our own compact button.
+                    host.parent = notificationsButton;
+                    host.anchors.fill = notificationsButton;
+                }
+                if (applet) {
+                    applet.parent = host;
+                    applet.anchors.fill = host;
+                    applet.visible = true;
+                }
+                root.registerHost(itemId, host);
+            }
+            onAppletChanged: adopt()
+            onDisplayTextChanged: root.refreshControls()
+            Component.onCompleted: adopt()
+            Component.onDestruction: root.unregisterHost(itemId, host)
+            Connections {
+                target: host.applet ?? null
+                function onExpandedChanged() {
+                    if (host.itemId === "org.kde.plasma.notifications") {
+                        if (host.applet.expanded && !root.notificationsOpen) root.openNotifications();
+                        else if (!host.applet.expanded) root.notificationsOpen = false;
+                    } else if (host.applet.expanded && systemTrayState.activeApplet !== host.applet) {
+                        root.openControl(host.applet);
+                    }
+                }
+                function onFullRepresentationItemChanged() {
+                    if (host.itemId === "org.kde.plasma.notifications") notificationContent.adopt();
                 }
             }
         }
     }
+    Item { id: appletStorage; visible: false }
+    Component.onCompleted: appletHosts.active = true
 
-    Instantiator {
-        id: activeInstantiator
-        active: false
-        model:activeModel
-        delegate: Connections {
-            required property QtObject applet
-            required property int row
-            target: applet
-            function onExpandedChanged(expanded: bool) {
-                if (expanded) {
-                    systemTrayState.setActiveApplet(applet, row)
-                }
-            }
-        }
-    }
-
-    MouseArea {
+    SystemTrayState { id: systemTrayState }
+    DropArea {
         anchors.fill: parent
-
-        onWheel: wheel => {
-            // Don't propagate unhandled wheel events
-            wheel.accepted = true;
-        }
-
-        SystemTrayState {
-            id: systemTrayState
-        }
-
-        CurrentItemHighLight {
-            location: Plasmoid.location
-            parent: root
-        }
-
-        DnD.DropArea {
-            anchors.fill: parent
-
-            preventStealing: true
-
-            /** Extracts the name of the system tray applet in the drag data if present
-            * otherwise returns null*/
-            function systemTrayAppletName(event) {
-                if (event.mimeData.formats.indexOf("text/x-plasmoidservicename") < 0) {
-                    return null;
-                }
-                const plasmoidId = event.mimeData.getDataAsByteArray("text/x-plasmoidservicename");
-
-                if (!Plasmoid.isSystemTrayApplet(plasmoidId)) {
-                    return null;
-                }
-                return plasmoidId;
-            }
-
-            onDragEnter: event => {
-                if (!systemTrayAppletName(event)) {
-                    event.ignore();
-                }
-            }
-
-            onDrop: event => {
-                const plasmoidId = systemTrayAppletName(event);
-                if (!plasmoidId) {
-                    event.ignore();
-                    return;
-                }
-
-                if (Plasmoid.configuration.extraItems.indexOf(plasmoidId) < 0) {
-                    const extraItems = Plasmoid.configuration.extraItems;
-                    extraItems.push(plasmoidId);
-                    Plasmoid.configuration.extraItems = extraItems;
-                }
+        keys: ["application/x-controlhub-tray-id"]
+        onDropped: drop => {
+            const id = drop.getDataAsString("application/x-controlhub-tray-id") || drop.source?.itemId;
+            if (id) {
+                root.setTrayVisibility(id, "shown");
+                drop.acceptProposedAction();
             }
         }
+    }
+    GridLayout {
+        id: mainLayout
+        anchors.fill: parent
+        rowSpacing: Kirigami.Units.smallSpacing
+        columnSpacing: Kirigami.Units.smallSpacing
+        flow: root.vertical ? GridLayout.TopToBottom : GridLayout.LeftToRight
+        rows: root.vertical ? -1 : 1
+        columns: root.vertical ? 1 : -1
 
-
-        //Main Layout
-        GridLayout {
-            id: mainLayout
-
-            rowSpacing: 0
-            columnSpacing: 0
-            anchors.fill: parent
-
-            flow: root.vertical ? GridLayout.TopToBottom : GridLayout.LeftToRight
-
-            GridView {
-                id: tasksGrid
-
-                Layout.row: root.vertical && root.reverseLayout ? 1 : 0 // Explicitly define grid coordinates
-                Layout.column: 0                                        // to prevent overlapping
-
-                Layout.alignment: Qt.AlignCenter
-
-                interactive: false //disable features we don't need
-                flow: root.vertical ? GridView.LeftToRight : GridView.TopToBottom
-
-                // Tell the grid to populate bottom-to-top when flipped on a vertical panel
-                verticalLayoutDirection: (root.vertical && root.reverseLayout) ? GridView.BottomToTop : GridView.TopToBottom
-
-                // The icon size to display when not using the auto-scaling setting
-                readonly property int smallIconSize: Kirigami.Units.iconSizes.smallMedium
-
-                readonly property bool autoSize: Plasmoid.configuration.scaleIconsToFit
-
-                readonly property int gridThickness: root.vertical ? root.width : root.height
-                // Should change to 2 rows/columns on a 56px panel (in standard DPI)
-                readonly property int rowsOrColumns: autoSize ? 1 : Math.max(1, Math.min(count, Math.floor(gridThickness / (smallIconSize + Kirigami.Units.smallSpacing))))
-
-                // Add margins only if the panel is larger than a small icon (to avoid large gaps between tiny icons)
-                readonly property int cellSpacing: Kirigami.Units.smallSpacing * Plasmoid.configuration.iconSpacing
-                readonly property int smallSizeCellLength: gridThickness < smallIconSize ? smallIconSize : smallIconSize + cellSpacing
-
-                cellHeight: {
-                    if (root.vertical) {
-                        return autoSize ? itemSize + (gridThickness < itemSize ? 0 : cellSpacing) : smallSizeCellLength
-                    } else {
-                        return autoSize ? root.height : Math.floor(root.height / rowsOrColumns)
-                    }
-                }
-                cellWidth: {
-                    if (root.vertical) {
-                        return autoSize ? root.width : Math.floor(root.width / rowsOrColumns)
-                    } else {
-                        return autoSize ? itemSize + (gridThickness < itemSize ? 0 : cellSpacing) : smallSizeCellLength
-                    }
-                }
-
-                //depending on the form factor, we are calculating only one dimension, second is always the same as root/parent
-                implicitHeight: root.vertical ? cellHeight * Math.ceil(count / rowsOrColumns) : root.height
-                implicitWidth: !root.vertical ? cellWidth * Math.ceil(count / rowsOrColumns) : root.width
-
-                readonly property int itemSize: {
-                    if (autoSize) {
-                        return Kirigami.Units.iconSizes.roundedIconSize(Math.min(Math.min(root.width, root.height) / rowsOrColumns, Kirigami.Units.iconSizes.enormous))
-                    } else {
-                        return smallIconSize
-                    }
-                }
-
-                model: activeModel
-
-                delegate: ItemLoader {
-                    id: delegate
-
-                    width: tasksGrid.cellWidth
-                    height: tasksGrid.cellHeight
-
-                    // We need to recalculate the stacking order of the z values due to how keyboard navigation works
-                    // the tab order depends exclusively from this, so we redo it as the position in the list
-                    // ensuring tab navigation focuses the expected items
-                    Component.onCompleted: {
-                        let item = tasksGrid.itemAtIndex(index - 1);
-                        if (item) {
-                            Plasmoid.stackItemBefore(delegate, item)
-                        } else {
-                            item = tasksGrid.itemAtIndex(index + 1);
-                        }
-                        if (item) {
-                            Plasmoid.stackItemAfter(delegate, item)
-                        }
+        GridView {
+            id: tasksGrid
+            readonly property int smallIconSize: Kirigami.Units.iconSizes.smallMedium
+            readonly property bool autoSize: Plasmoid.configuration.scaleIconsToFit
+            readonly property int gridThickness: root.vertical ? root.width : root.height
+            readonly property int rowsOrColumns: autoSize ? 1 : Math.max(1, Math.min(count, Math.floor(gridThickness / (smallIconSize + Kirigami.Units.smallSpacing))))
+            readonly property int cellSpacing: Kirigami.Units.smallSpacing * Plasmoid.configuration.iconSpacing
+            readonly property int smallSizeCellLength: gridThickness < smallIconSize ? smallIconSize : smallIconSize + cellSpacing
+            readonly property int itemSize: autoSize ? Kirigami.Units.iconSizes.roundedIconSize(Math.min(Math.min(root.width, root.height) / rowsOrColumns, Kirigami.Units.iconSizes.enormous)) : smallIconSize
+            cellWidth: root.vertical ? (autoSize ? root.width : Math.floor(root.width / rowsOrColumns)) : (autoSize ? itemSize + (gridThickness < itemSize ? 0 : cellSpacing) : smallSizeCellLength)
+            cellHeight: root.vertical ? (autoSize ? itemSize + (gridThickness < itemSize ? 0 : cellSpacing) : smallSizeCellLength) : (autoSize ? root.height : Math.floor(root.height / rowsOrColumns))
+            implicitWidth: root.vertical ? smallIconSize : cellWidth * Math.ceil(count / rowsOrColumns)
+            implicitHeight: root.vertical ? cellHeight * Math.ceil(count / rowsOrColumns) : smallIconSize
+            verticalLayoutDirection: root.vertical && root.reverseLayout ? GridView.BottomToTop : GridView.TopToBottom
+            Layout.fillWidth: root.vertical
+            Layout.fillHeight: !root.vertical
+            flow: root.vertical ? GridView.LeftToRight : GridView.TopToBottom
+            interactive: false
+            model: activeModel
+            delegate: ItemLoader {
+                width: tasksGrid.cellWidth
+                height: tasksGrid.cellHeight
+            }
+            DropArea {
+                anchors.fill: parent
+                keys: ["application/x-controlhub-tray-id"]
+                onDropped: drop => {
+                    const id = drop.getDataAsString("application/x-controlhub-tray-id") || drop.source?.itemId;
+                    if (id) {
+                        root.setTrayVisibility(id, "shown");
+                        drop.acceptProposedAction();
                     }
                 }
             }
-
-            ExpanderArrow {
-                id: expander
-
-                Layout.row: root.vertical && !root.reverseLayout ? 1 : 0 // Explicitly define grid coordinates
-                Layout.column: root.vertical ? 0 : 1                     // to prevent overlapping
-
-                Layout.fillWidth: vertical
-                Layout.fillHeight: !vertical
-                Layout.alignment: vertical ? Qt.AlignVCenter : Qt.AlignHCenter
-                iconSize: tasksGrid.itemSize
-                visible: root.hiddenLayout.itemCount > 0
-            }
         }
-
-        Timer {
-            id: expandedSync
-            interval: 100
-            onTriggered: systemTrayState.expanded = dialog.visible;
-        }
-
-        //Main popup
-        PlasmaCore.AppletPopup {
-            id: dialog
-            objectName: "popupWindow"
-            visualParent: root
-            popupDirection: switch (Plasmoid.location) {
-                case PlasmaCore.Types.TopEdge:
-                    return Qt.BottomEdge
-                case PlasmaCore.Types.LeftEdge:
-                    return Qt.RightEdge
-                case PlasmaCore.Types.RightEdge:
-                    return Qt.LeftEdge
-                default:
-                    return Qt.TopEdge
-            }
-            margin: (Plasmoid.containmentDisplayHints & PlasmaCore.Types.ContainmentPrefersFloatingApplets) ? Kirigami.Units.largeSpacing : 0
-
-            Behavior on margin {
-                NumberAnimation {
-                    // Since the panel animation won't be perfectly in sync,
-                    // using a duration larger than the panel animation results
-                    // in a better-looking animation.
-                    duration: Kirigami.Units.veryLongDuration
-                    easing.type: Easing.OutCubic
-                }
-            }
-
-            floating: Plasmoid.location == PlasmaCore.Desktop
-
-            removeBorderStrategy: Plasmoid.location === PlasmaCore.Types.Floating
-                ? PlasmaCore.AppletPopup.AtScreenEdges
-                : PlasmaCore.AppletPopup.AtScreenEdges | PlasmaCore.AppletPopup.AtPanelEdges
-
-
-            hideOnWindowDeactivate: !Plasmoid.configuration.pin
-            visible: systemTrayState.expanded
-            appletInterface: root
-
-            backgroundHints: (Plasmoid.containmentDisplayHints & PlasmaCore.Types.ContainmentPrefersOpaqueBackground) ? PlasmaCore.AppletPopup.SolidBackground : PlasmaCore.AppletPopup.StandardBackground
-
-            onVisibleChanged: {
-                if (!visible) {
-                    expandedSync.restart();
-                } else {
-                    dialog.requestActivate();
-                    if (expandedRepresentation.plasmoidContainer.visible) {
-                        expandedRepresentation.plasmoidContainer.forceActiveFocus();
-                    } else if (expandedRepresentation.hiddenLayout.visible) {
-                        expandedRepresentation.hiddenLayout.forceActiveFocus();
+        ExpanderArrow {
+            id: expander
+            Layout.fillWidth: root.vertical
+            Layout.fillHeight: !root.vertical
+            iconSize: tasksGrid.itemSize
+            visible: hiddenModel.count > 0 || activeModel.count > 0
+            DropArea {
+                anchors.fill: parent
+                keys: ["application/x-controlhub-tray-id"]
+                onEntered: revealTimer.restart()
+                onExited: revealTimer.stop()
+                onDropped: drop => {
+                    revealTimer.stop();
+                    const id = drop.getDataAsString("application/x-controlhub-tray-id") || drop.source?.itemId;
+                    if (id) {
+                        root.setTrayVisibility(id, "hidden");
+                        drop.acceptProposedAction();
                     }
                 }
             }
-            mainItem: ExpandedRepresentation {
-                id: expandedRepresentation
-
-                Keys.onEscapePressed: event => {
-                    systemTrayState.expanded = false
-                }
-
-                // Being there forces the items to fully load, and they will be reparented in the stack one by one, this item is *never* visible
-                // it's important this item is parented to the popup, otherwise the full representation will be reparented every time the popup opens or closes
-                Item {
-                    id: preloadedStorage
-                    visible: false
-                }
-
-                // Draws a line between the applet dialog and the panel
-                KSvg.SvgItem {
-                    id: separator
-                    // Only draw for popups of panel applets, not desktop applets
-                    visible: [PlasmaCore.Types.TopEdge, PlasmaCore.Types.LeftEdge, PlasmaCore.Types.RightEdge, PlasmaCore.Types.BottomEdge]
-                        .includes(Plasmoid.location) && !dialog.margin
-                    anchors {
-                        topMargin: -dialog.topPadding
-                        leftMargin: -dialog.leftPadding
-                        rightMargin: -dialog.rightPadding
-                        bottomMargin: -dialog.bottomPadding
-                    }
-                    z: 999 /* Draw the line on top of the applet */
-                    elementId: (Plasmoid.location === PlasmaCore.Types.TopEdge || Plasmoid.location === PlasmaCore.Types.BottomEdge) ? "horizontal-line" : "vertical-line"
-                    imagePath: "widgets/line"
-                    // QTBUG-120464: Use AnchorChanges instead of bindings as it's officially supported: https://doc.qt.io/qt-6/qtquick-positioning-anchors.html#changing-anchors
-                    states: [
-                        State {
-                            when: Plasmoid.location === PlasmaCore.Types.TopEdge
-                            AnchorChanges {
-                                target: separator
-                                anchors {
-                                    top: separator.parent.top
-                                    left: separator.parent.left
-                                    right: separator.parent.right
-                                }
-                            }
-                            PropertyChanges {
-                                separator.height: 1
-                            }
-                        },
-                        State {
-                            when: Plasmoid.location === PlasmaCore.Types.LeftEdge
-                            AnchorChanges {
-                                target: separator
-                                anchors {
-                                    left: separator.parent.left
-                                    top: separator.parent.top
-                                    bottom: separator.parent.bottom
-                                }
-                            }
-                            PropertyChanges {
-                                separator.width: 1
-                            }
-                        },
-                        State {
-                            when: Plasmoid.location === PlasmaCore.Types.RightEdge
-                            AnchorChanges {
-                                target: separator
-                                anchors {
-                                    top: separator.parent.top
-                                    right: separator.parent.right
-                                    bottom: separator.parent.bottom
-                                }
-                            }
-                            PropertyChanges {
-                                separator.width: 1
-                            }
-                        },
-                        State {
-                            when: Plasmoid.location === PlasmaCore.Types.BottomEdge
-                            AnchorChanges {
-                                target: separator
-                                anchors {
-                                    left: separator.parent.left
-                                    right: separator.parent.right
-                                    bottom: separator.parent.bottom
-                                }
-                            }
-                            PropertyChanges {
-                                separator.height: 1
-                            }
-                        }
-                    ]
-                }
-
-                LayoutMirroring.enabled: Application.layoutDirection === Qt.RightToLeft
-                LayoutMirroring.childrenInherit: true
+            Timer { id: revealTimer; interval: 450; onTriggered: root.showHome("applications") }
+        }
+        PlasmaComponents.ToolButton {
+            id: controlsButton
+            objectName: "controlsButton"
+            Layout.fillWidth: root.vertical
+            Layout.fillHeight: !root.vertical
+            icon.name: "preferences-system"
+            text: i18n("Control Center")
+            display: PlasmaComponents.AbstractButton.IconOnly
+            checked: systemTrayState.expanded && root.popupMode === "controls"
+            onClicked: root.toggleHome("controls")
+            PlasmaComponents.ToolTip { text: controlsButton.text }
+        }
+        PlasmaComponents.ToolButton {
+            id: notificationsButton
+            objectName: "notificationsButton"
+            Layout.fillWidth: root.vertical
+            Layout.fillHeight: !root.vertical
+            icon.name: root.notificationsApplet?.inhibitedOrBroken ? "notifications-disabled-symbolic" : "view-conversation-balloon-symbolic"
+            text: root.unreadCount > 0 ? i18np("%1 unread notification", "%1 unread notifications", root.unreadCount) : i18n("Notifications")
+            display: PlasmaComponents.AbstractButton.IconOnly
+            checked: root.notificationsOpen
+            enabled: root.notificationsApplet !== null
+            onClicked: {
+                if (root.notificationsOpen) root.notificationsOpen = false;
+                else root.openNotifications();
             }
+            PlasmaComponents.ToolTip { text: notificationsButton.text }
+            Kirigami.Badge {
+                anchors.top: parent.top
+                anchors.right: parent.right
+                visible: root.unreadCount > 0
+                text: root.unreadCount > 99 ? "99+" : root.unreadCount
+            }
+        }
+    }
+
+    PlasmaCore.AppletPopup {
+        id: dialog
+        objectName: "controlPopup"
+        visualParent: root
+        popupDirection: switch (Plasmoid.location) {
+            case PlasmaCore.Types.TopEdge: return Qt.BottomEdge;
+            case PlasmaCore.Types.LeftEdge: return Qt.RightEdge;
+            case PlasmaCore.Types.RightEdge: return Qt.LeftEdge;
+            default: return Qt.TopEdge;
+        }
+        margin: (Plasmoid.containmentDisplayHints & PlasmaCore.Types.ContainmentPrefersFloatingApplets) ? Kirigami.Units.largeSpacing : 0
+        floating: Plasmoid.location === PlasmaCore.Types.Desktop
+        hideOnWindowDeactivate: !Plasmoid.configuration.pin
+        visible: systemTrayState.expanded
+        appletInterface: root
+        backgroundHints: (Plasmoid.containmentDisplayHints & PlasmaCore.Types.ContainmentPrefersOpaqueBackground) ? PlasmaCore.AppletPopup.SolidBackground : PlasmaCore.AppletPopup.StandardBackground
+        onVisibleChanged: {
+            if (!visible) systemTrayState.expanded = false;
+            else { requestActivate(); expandedRepresentation.forceActiveFocus(); }
+        }
+        mainItem: ExpandedRepresentation {
+            id: expandedRepresentation
+            Keys.onEscapePressed: {
+                if (root.editing) root.editing = false;
+                else if (systemTrayState.activeApplet) systemTrayState.setActiveApplet(null);
+                else systemTrayState.expanded = false;
+            }
+            Item { id: preloadedStorage; visible: false }
+        }
+    }
+
+    NotificationDrawer {
+        id: notificationDrawer
+        objectName: "notificationDrawer"
+        visualParent: root
+        appletInterface: root
+        animationEnabled: Kirigami.Units.longDuration > 0
+        visible: root.notificationsOpen
+        backgroundHints: (Plasmoid.containmentDisplayHints & PlasmaCore.Types.ContainmentPrefersOpaqueBackground) ? PlasmaCore.Dialog.SolidBackground : PlasmaCore.Dialog.StandardBackground
+        onVisibleChanged: {
+            if (!visible) {
+                root.notificationsOpen = false;
+                if (root.notificationsApplet) root.notificationsApplet.expanded = false;
+            } else {
+                notificationDrawer.activateDrawer();
+                notificationContent.adopt();
+                notificationContent.forceActiveFocus();
+            }
+        }
+        mainItem: NotificationContent {
+            id: notificationContent
+            applet: root.notificationsApplet
+            width: Math.max(1, Math.min(Kirigami.Units.gridUnit * 24, notificationDrawer.availableGeometry.width - notificationDrawer.margins.left - notificationDrawer.margins.right))
+            height: Math.max(1, notificationDrawer.availableGeometry.height - notificationDrawer.margins.top - notificationDrawer.margins.bottom)
+            onCloseRequested: root.notificationsOpen = false
         }
     }
 }

@@ -1,6 +1,5 @@
-add_definitions(-DTRANSLATION_DOMAIN=\"plasma_applet_org.kde.plasma.systemtray\")
+add_definitions(-DTRANSLATION_DOMAIN=\"plasma_applet_org.eirom.plasma.controlhub\")
 
-include_directories(${plasma-workspace_SOURCE_DIR}/statusnotifierwatcher)
 
 set(systemtray_SRCS
     dbusserviceobserver.cpp dbusserviceobserver.h
@@ -14,7 +13,7 @@ set(systemtray_SRCS
 )
 
 qt_add_dbus_interface(systemtray_SRCS ${KSTATUSNOTIFIERITEM_DBUS_INTERFACES_DIR}/kf6_org.kde.StatusNotifierWatcher.xml statusnotifierwatcher_interface)
-qt_add_dbus_interface(systemtray_SRCS ${plasma-workspace_SOURCE_DIR}/libkmpris/dbus/org.freedesktop.DBus.Properties.xml dbusproperties)
+qt_add_dbus_interface(systemtray_SRCS ${PROJECT_SOURCE_DIR}/dbus/org.freedesktop.DBus.Properties.xml dbusproperties)
 
 set(statusnotifieritem_xml ${KSTATUSNOTIFIERITEM_DBUS_INTERFACES_DIR}/kf6_org.kde.StatusNotifierItem.xml)
 set_source_files_properties(${statusnotifieritem_xml} PROPERTIES
@@ -54,9 +53,10 @@ target_link_libraries(systemtray_static
 
 set_property(TARGET systemtray_static PROPERTY POSITION_INDEPENDENT_CODE ON)
 
-plasma_add_applet(org.kde.plasma.systemtray
+plasma_add_applet(org.eirom.plasma.controlhub
     CPP_SOURCES
         systemtray.cpp
+        notificationdrawer.cpp
     QML_SOURCES
         qml/AbstractItem.qml
         qml/BackgroundAppItem.qml
@@ -71,6 +71,12 @@ plasma_add_applet(org.kde.plasma.systemtray
         qml/config.qml
         qml/ExpandedRepresentation.qml
         qml/HiddenItemsView.qml
+        qml/ControlCenter.qml
+        qml/ControlTile.qml
+        qml/NotificationContent.qml
+        qml/VolumeControl.qml
+        qml/BrightnessControl.qml
+        qml/ControlLayout.js
         qml/main.qml
         qml/PlasmoidPopupsContainer.qml
         qml/StatusNotifierItem.qml
@@ -78,14 +84,8 @@ plasma_add_applet(org.kde.plasma.systemtray
         main.xml
 )
 
-ecm_add_qml_module(systemtrayplugin URI org.kde.plasma.private.systemtray GENERATE_PLUGIN_SOURCE)
-target_sources(systemtrayplugin PRIVATE systemtraymodel.cpp)
-target_link_libraries(systemtrayplugin PRIVATE systemtray_static)
-ecm_finalize_qml_module(systemtrayplugin)
-
-target_link_libraries(org.kde.plasma.systemtray PRIVATE systemtray_static)
+target_link_libraries(org.eirom.plasma.controlhub PRIVATE systemtray_static)
 
 if(BUILD_TESTING)
   add_subdirectory(autotests)
-  add_subdirectory(tests)
 endif()

@@ -36,6 +36,7 @@ public:
     bool isShowAllItems() const;
     const QStringList shownItems() const;
     const QStringList hiddenItems() const;
+    void setItemVisibility(const QString &itemId, const QString &mode);
 
     void cleanupPlugin(const QString &pluginId);
 

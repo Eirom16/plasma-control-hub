@@ -110,6 +110,34 @@ void SystemTraySettings::cleanupPlugin(const QString &pluginId)
     writeConfigValue(HIDDEN_ITEMS_KEY, hidden);
 }
 
+void SystemTraySettings::setItemVisibility(const QString &itemId, const QString &mode)
+{
+    if (!config || itemId.isEmpty()
+        || (mode != QLatin1String("shown") && mode != QLatin1String("hidden") && mode != QLatin1String("auto"))) return;
+    QStringList shown = shownItems();
+    QStringList hidden = hiddenItems();
+    shown.removeAll(itemId);
+    hidden.removeAll(itemId);
+    if (mode == QLatin1String("shown")) shown.append(itemId);
+    if (mode == QLatin1String("hidden")) hidden.append(itemId);
+    updatingConfigValue = true;
+    const QMap<QString, QVariant> changes = {
+        {QStringLiteral("shownItems"), shown},
+        {QStringLiteral("hiddenItems"), hidden},
+        {QStringLiteral("showAllItems"), false},
+    };
+    for (auto it = changes.cbegin(); it != changes.cend(); ++it) {
+        if (auto *item = config->findItemByName(it.key())) {
+            item->setWriteFlags(KConfigBase::Notify);
+            item->setProperty(it.value());
+        }
+    }
+    config->save();
+    config->read();
+    updatingConfigValue = false;
+    Q_EMIT configurationChanged();
+}
+
 void SystemTraySettings::loadConfig()
 {
     if (!config) {

@@ -19,7 +19,17 @@ PlasmaComponents3.ScrollView {
     property alias layout: hiddenTasks
 
     hoverEnabled: true
-    background: null
+    background: DropArea {
+        anchors.fill: parent
+        keys: ["application/x-controlhub-tray-id"]
+        onDropped: drop => {
+            const id = drop.getDataAsString("application/x-controlhub-tray-id") || drop.source?.itemId;
+            if (id) {
+                root.setTrayVisibility(id, "hidden");
+                drop.acceptProposedAction();
+            }
+        }
+    }
 
     GridView {
         id: hiddenTasks
