@@ -341,11 +341,13 @@ int main(int argc, char **argv)
             }
         }
         auto notification = QDBusMessage::createMethodCall(QStringLiteral("org.freedesktop.Notifications"), QStringLiteral("/org/freedesktop/Notifications"), QStringLiteral("org.freedesktop.Notifications"), QStringLiteral("Notify"));
-        notification.setArguments({QStringLiteral("Control Hub"), uint(0), QStringLiteral("dialog-information"), QStringLiteral("Notificaciones de KDE"), QStringLiteral("El historial original se muestra desde el borde derecho."), QStringList(), QVariantMap{{QStringLiteral("urgency"), QVariant::fromValue(static_cast<uchar>(1))}, {QStringLiteral("desktop-entry"), QStringLiteral("org.eirom.ControlHubSmoke")}}, 0});
+        notification.setArguments({QStringLiteral("Control Hub"), uint(0), QStringLiteral("dialog-information"), QStringLiteral("Notificaciones de KDE"), QStringLiteral("El historial original se muestra desde el borde derecho."), QStringList(), QVariantMap{{QStringLiteral("urgency"), QVariant::fromValue(static_cast<uchar>(1))}, {QStringLiteral("desktop-entry"), QStringLiteral("org.eirom.ControlHubSmoke")}}, 1000});
         auto pendingNotification = QDBusConnection::sessionBus().asyncCall(notification);
         QTest::qWait(300);
         QDBusPendingReply<uint> notificationReply(pendingNotification);
         qInfo() << "Notify reply:" << notificationReply.isFinished() << notificationReply.error();
+        QTest::qWait(1600); // Let the native toast expire into unread history.
+        capture(&panel, QStringLiteral("panel-unread"));
         QMetaObject::invokeMethod(item, "openNotifications");
         QTest::qWait(250);
         auto *drawer = windowNamed(QStringLiteral("notificationDrawer"));

@@ -393,12 +393,23 @@ ContainmentItem {
                 if (root.notificationsOpen) root.notificationsOpen = false;
                 else root.openNotifications();
             }
-            Kirigami.Badge {
-                anchors.top: parent.top
-                anchors.right: parent.right
-                anchors.topMargin: Math.max(0, (notificationsButton.height - notificationsButton.iconSize) / 2 - height / 3)
-                visible: root.unreadCount > 0
-                text: root.unreadCount > 99 ? "99+" : root.unreadCount
+            Item {
+                anchors.centerIn: parent
+                width: notificationsButton.iconSize
+                height: notificationsButton.iconSize
+                Rectangle {
+                    objectName: "notificationUnreadDot"
+                    anchors.top: parent.top
+                    anchors.right: parent.right
+                    anchors.topMargin: 1
+                    width: Kirigami.Units.smallSpacing + 2
+                    height: width
+                    radius: width / 2
+                    color: Kirigami.Theme.highlightColor
+                    border.color: Kirigami.Theme.backgroundColor
+                    border.width: 1
+                    visible: root.unreadCount > 0
+                }
             }
         }
     }

@@ -55,3 +55,7 @@ No se han medido FPS, consumo gráfico ni latencia. La animación depende de los
 - Las capturas nuevas proceden de una sesión aislada con una copia de la configuración de colores e iconos del usuario (tema oscuro y Tela-circle-dark). El fondo de la ventana de revisión usa la paleta de KDE.
 - El instalador prepara los archivos en un directorio temporal y sustituye el plugin de forma atómica, para conservar la biblioteca que una sesión de Plasma ya tenga cargada hasta su recarga.
 - La recarga en la sesión real permitió detectar una dependencia circular entre la altura del cajón y los márgenes nativos. La aplicación diferida de sus dimensiones evita esa actualización recursiva. Las cuatro pruebas vuelven a pasar y la prueba en KWin Wayland, con el tema del usuario, termina sin errores QML y con geometría real `QRect(1000,0 440×900)`.
+
+## Indicador de notificaciones sin leer
+
+Se sustituyó el contador circular por un punto de 6 px lógicos, anclado a la esquina superior derecha del icono y coloreado con el acento de Plasma. La descripción accesible y el tooltip conservan la cantidad. La captura `notification-indicator.png` usa una notificación real en el bus privado, después de expirar su aviso emergente.

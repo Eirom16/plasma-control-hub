@@ -18,6 +18,7 @@ Las capturas proceden de una sesión aislada: algunos servicios, incluido PowerD
 - «Editar» permite mostrar, quitar y ordenar controles. El orden y la selección se guardan por instancia del widget.
 - Las aplicaciones permanecen en la bandeja o en el desplegable de la flecha. Se pueden mover por arrastre y configurar desde el menú contextual. Mayús+F10 alterna la visibilidad del icono enfocado.
 - En la configuración original del widget, **Entradas → Mostrar siempre** coloca también cualquier módulo de KDE en la barra: método de entrada, teclado, Bluetooth, etc. Conserva su representación compacta original y sus interacciones. «Editar» sigue dedicado a la distribución del centro de control.
+- Las notificaciones sin leer se indican con un punto pequeño en la esquina superior derecha del icono; la cantidad permanece en su descripción al pasar el cursor.
 - El botón de notificaciones abre el historial original en el borde derecho. La ventana usa el estilo de Plasma y solicita a KWin la animación desde la derecha.
 - Flecha, centro y notificaciones comparten tamaño de celda y símbolos SVG propios, coloreados por Plasma. Las opciones sin icono disponible reciben un símbolo de reserva propio.
 - Las funciones detalladas y la configuración de cada módulo siguen perteneciendo a los plasmoides originales.
