@@ -76,6 +76,9 @@ plasma_add_applet(org.eirom.plasma.controlhub
         qml/NotificationContent.qml
         qml/VolumeControl.qml
         qml/BrightnessControl.qml
+        qml/PanelButton.qml
+        qml/ControlIcon.qml
+        qml/ControlIcons.js
         qml/ControlLayout.js
         qml/main.qml
         qml/PlasmoidPopupsContainer.qml
@@ -84,8 +87,39 @@ plasma_add_applet(org.eirom.plasma.controlhub
         main.xml
 )
 
+# Preserve the icon subdirectory inside the QML module resources.
+ecm_target_qml_sources(org.eirom.plasma.controlhub PATH icons SOURCES
+    qml/icons/hub-battery.svg
+    qml/icons/hub-bluetooth.svg
+    qml/icons/hub-brightness.svg
+    qml/icons/hub-camera.svg
+    qml/icons/hub-chevron-up.svg
+    qml/icons/hub-clipboard.svg
+    qml/icons/hub-control-center.svg
+    qml/icons/hub-devices.svg
+    qml/icons/hub-disk.svg
+    qml/icons/hub-display.svg
+    qml/icons/hub-dwell-click.svg
+    qml/icons/hub-input-method.svg
+    qml/icons/hub-keyboard.svg
+    qml/icons/hub-media.svg
+    qml/icons/hub-notifications-paused.svg
+    qml/icons/hub-notifications.svg
+    qml/icons/hub-phone.svg
+    qml/icons/hub-sessions.svg
+    qml/icons/hub-trash.svg
+    qml/icons/hub-volume.svg
+    qml/icons/hub-weather.svg
+    qml/icons/hub-wifi.svg
+)
+
 target_link_libraries(org.eirom.plasma.controlhub PRIVATE systemtray_static)
 
 if(BUILD_TESTING)
   add_subdirectory(autotests)
 endif()
+
+# Also identify the widget in Plasma's catalog without a theme-specific icon.
+install(FILES qml/icons/hub-control-center.svg
+    DESTINATION ${KDE_INSTALL_DATADIR}/icons/hicolor/scalable/apps
+    RENAME plasma-control-hub.svg)

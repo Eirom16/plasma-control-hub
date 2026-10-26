@@ -91,8 +91,9 @@ PlasmaComponents.ScrollView {
                             Layout.preferredWidth: Kirigami.Units.iconSizes.small
                             Layout.preferredHeight: Kirigami.Units.iconSizes.small
                         }
-                        Kirigami.Icon {
+                        ControlIcon {
                             source: row.modelData.icon
+                            controlId: row.controlId
                             Layout.preferredWidth: Kirigami.Units.iconSizes.smallMedium
                             Layout.preferredHeight: Kirigami.Units.iconSizes.smallMedium
                         }

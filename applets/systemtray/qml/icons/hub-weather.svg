@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- SPDX-FileCopyrightText: 2026 Eirom16
+     SPDX-License-Identifier: GPL-2.0-or-later -->
+<svg xmlns="http://www.w3.org/2000/svg" width="22" height="22" viewBox="0 0 22 22">
+  <style id="current-color-scheme" type="text/css">.ColorScheme-Text { color: #232629; }</style>
+  <g class="ColorScheme-Text" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M7 11a4.5 4.5 0 1 1 8-4M10 2v1m-7 4H2m3-3-1-1m14 1-1 1"/><path d="M6 18a3 3 0 0 1-1-5.8 4.5 4.5 0 0 1 8.5-1.7A3.8 3.8 0 1 1 16 18Z"/></g>
+</svg>

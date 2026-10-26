@@ -18,6 +18,8 @@
 #include <QFile>
 #include <QImage>
 #include <QJSValue>
+#include <QQmlComponent>
+#include <QQmlEngine>
 #include <QQuickWindow>
 #include <QScreen>
 #include <QSet>
@@ -32,6 +34,7 @@
 #include <Plasma/Containment>
 #include <PlasmaQuick/AppletQuickItem>
 #include <cstdio>
+#include <memory>
 
 static bool invalidQml = false;
 static void logMessage(QtMsgType, const QMessageLogContext &, const QString &message)
@@ -110,6 +113,12 @@ int main(int argc, char **argv)
     if (!identity.open(QIODevice::WriteOnly)) return 2;
     identity.write("[Desktop Entry]\nType=Application\nName=Control Hub\nExec=/bin/true\nIcon=dialog-information\n");
     identity.close();
+    const QString reviewConfig = qEnvironmentVariable("CONTROLHUB_REVIEW_CONFIG");
+    if (!reviewConfig.isEmpty()) {
+        const QString configHome = qEnvironmentVariable("XDG_CONFIG_HOME");
+        QDir().mkpath(configHome);
+        if (!QFile::copy(reviewConfig, configHome + QStringLiteral("/kdeglobals"))) return 2;
+    }
     QApplication app(argc, argv);
     qInstallMessageHandler(logMessage);
     app.setApplicationName(QStringLiteral("controlhub-smoke"));
@@ -130,13 +139,18 @@ int main(int argc, char **argv)
     auto shell = KPackage::PackageLoader::self()->loadPackage(QStringLiteral("Plasma/Shell"));
     shell.setPath(QStringLiteral("org.kde.plasma.desktop"));
     corona.setKPackage(shell);
-    auto *containment = corona.createContainment(QStringLiteral("org.eirom.plasma.controlhub"));
+    auto *parentPanel = corona.createContainment(QStringLiteral("org.kde.panel"));
+    if (!parentPanel) return 3;
+    parentPanel->setFormFactor(Plasma::Types::Horizontal);
+    parentPanel->setLocation(Plasma::Types::BottomEdge);
+    auto *containment = qobject_cast<Plasma::Containment *>(parentPanel->createApplet(QStringLiteral("org.eirom.plasma.controlhub")));
     if (!containment || !containment->pluginMetaData().isValid()) return 3;
     containment->setFormFactor(Plasma::Types::Horizontal);
     containment->setLocation(Plasma::Types::BottomEdge);
     auto *item = PlasmaQuick::AppletQuickItem::itemForApplet(containment);
     if (!item) return 4;
     QQuickWindow panel;
+    panel.setColor(app.palette().color(QPalette::Window));
     panel.setObjectName(QStringLiteral("reviewPanel"));
     panel.resize(360, 48);
     item->setParentItem(panel.contentItem());
@@ -153,6 +167,82 @@ int main(int argc, char **argv)
         }
         qInfo() << "Loaded control modules:" << ids;
         if (entries.isEmpty()) { app.exit(5); return; }
+        // Exercise the actual layout at panel sizes rather than just checking
+        // constants: buttons must share cells, centers and valid bundled glyphs.
+        auto *expandButton = visualChild(item, QStringLiteral("expanderButton"));
+        auto *controlsButton = visualChild(item, QStringLiteral("controlsButton"));
+        auto *notificationsButton = visualChild(item, QStringLiteral("notificationsButton"));
+        if (!expandButton || !controlsButton || !notificationsButton) { app.exit(25); return; }
+        for (const bool vertical : {false, true}) {
+            parentPanel->setFormFactor(vertical ? Plasma::Types::Vertical : Plasma::Types::Horizontal);
+            parentPanel->setLocation(vertical ? Plasma::Types::RightEdge : Plasma::Types::BottomEdge);
+            for (const int thickness : {24, 40, 64}) {
+                const QSize size = vertical ? QSize(thickness, 360) : QSize(360, thickness);
+                panel.resize(size);
+                item->setSize(size);
+                QTest::qWait(80);
+                const auto a = expandButton->mapRectToItem(item, expandButton->boundingRect());
+                const auto b = controlsButton->mapRectToItem(item, controlsButton->boundingRect());
+                const auto c = notificationsButton->mapRectToItem(item, notificationsButton->boundingRect());
+                const bool aligned = vertical
+                    ? qAbs(a.bottom() - b.top()) < 1 && qAbs(b.bottom() - c.top()) < 1
+                        && qAbs(a.height() - b.height()) < 1 && qAbs(b.height() - c.height()) < 1
+                        && qAbs(a.center().x() - c.center().x()) < 1
+                    : qAbs(a.right() - b.left()) < 1 && qAbs(b.right() - c.left()) < 1
+                        && qAbs(a.width() - b.width()) < 1 && qAbs(b.width() - c.width()) < 1
+                        && qAbs(a.center().y() - c.center().y()) < 1;
+                if (!aligned) {
+                    qCritical() << "Unequal panel cells:" << vertical << thickness << a << b << c;
+                    app.exit(25); return;
+                }
+                for (auto *button : {expandButton, controlsButton, notificationsButton}) {
+                    auto *glyph = visualChild(button, QStringLiteral("panelGlyph"));
+                    if (!glyph || glyph->property("status").toInt() != 1 || !glyph->property("isMask").toBool()) {
+                        qCritical("A bundled panel icon is missing or does not follow the palette");
+                        app.exit(26); return;
+                    }
+                }
+            }
+        }
+        parentPanel->setFormFactor(Plasma::Types::Horizontal);
+        parentPanel->setLocation(Plasma::Types::BottomEdge);
+        panel.resize(360, 40);
+        item->setSize(panel.size());
+        QTest::qWait(80);
+        auto *notificationsApplet = item->property("notificationsApplet").value<QQuickItem *>();
+        auto *originalCompact = notificationsApplet ? notificationsApplet->property("compactRepresentationItem").value<QQuickItem *>() : nullptr;
+        if (!notificationsApplet || notificationsApplet->opacity() != 0 || (originalCompact && originalCompact->opacity() != 0)) {
+            qCritical("The original notification icon is still painting under the new button");
+            app.exit(27); return;
+        }
+        if (qEnvironmentVariableIsSet("CONTROLHUB_DUMP_ICONS")) {
+            const auto dump = [](auto &&self, QQuickItem *node, int depth) -> void {
+                qInfo() << QString(depth, QLatin1Char(' ')) << node->metaObject()->className() << node->objectName()
+                        << node->opacity() << node->isVisible() << node->property("source");
+                for (auto *child : node->childItems()) self(self, child, depth + 1);
+            };
+            dump(dump, notificationsButton, 0);
+        }
+        QQmlComponent fallbackComponent(qmlEngine(item), QUrl(QStringLiteral("qrc:/qt/qml/plasma/applet/org/eirom/plasma/controlhub/ControlIcon.qml")));
+        std::unique_ptr<QObject> fallback(fallbackComponent.createWithInitialProperties({
+            {QStringLiteral("source"), QStringLiteral("controlhub-deliberately-missing-icon")},
+            {QStringLiteral("controlId"), QStringLiteral("org.kde.plasma.networkmanagement")},
+        }));
+        auto *fallbackItem = qobject_cast<QQuickItem *>(fallback.get());
+        if (fallbackItem) fallbackItem->setParentItem(panel.contentItem());
+        QTest::qWait(100);
+        auto *fallbackGlyph = fallbackItem ? visualChild(fallbackItem, QStringLiteral("fallbackGlyph")) : nullptr;
+        if (!fallbackGlyph || !fallbackGlyph->isVisible() || !fallbackGlyph->property("valid").toBool()) {
+            auto *nativeGlyph = fallbackItem ? visualChild(fallbackItem, QStringLiteral("nativeGlyph")) : nullptr;
+            qCritical() << "Missing control icons have no valid fallback:" << fallbackComponent.errors()
+                        << fallbackItem << (fallbackItem ? fallbackItem->size() : QSizeF())
+                        << (fallbackGlyph ? fallbackGlyph->property("valid") : QVariant())
+                        << (fallbackGlyph ? fallbackGlyph->property("source") : QVariant())
+                        << (nativeGlyph ? nativeGlyph->property("valid") : QVariant());
+            app.exit(28); return;
+        }
+        fallback.reset();
+        capture(&panel, QStringLiteral("panel-idle"));
         QMetaObject::invokeMethod(item, "showHome", Q_ARG(QVariant, QVariant(QStringLiteral("controls"))));
         QTest::qWait(350);
         auto *popup = windowNamed(QStringLiteral("controlPopup"));
@@ -161,6 +251,30 @@ int main(int argc, char **argv)
         capture(popup, QStringLiteral("controls"));
         capture(&panel, QStringLiteral("panel"));
         if (qEnvironmentVariableIsSet("CONTROLHUB_MANUAL")) return;
+
+        // Pin an actual module independently of whether its tile is selected.
+        QMetaObject::invokeMethod(item, "setControlVisible", Q_ARG(QVariant, QVariant(QStringLiteral("org.kde.plasma.clipboard"))), Q_ARG(QVariant, QVariant(false)));
+        QMetaObject::invokeMethod(item, "setTrayVisibility", Q_ARG(QVariant, QVariant(QStringLiteral("org.kde.plasma.clipboard"))), Q_ARG(QVariant, QVariant(QStringLiteral("shown"))));
+        QTest::qWait(100);
+        auto *pin = visualChild(item, QStringLiteral("pinnedControl_org.kde.plasma.clipboard"));
+        if (!pin || !pin->isVisible() || !containment->configScheme()->property(QStringLiteral("shownItems")).toStringList().contains(QStringLiteral("org.kde.plasma.clipboard"))) {
+            qCritical("A selected control could not be pinned to the panel"); app.exit(29); return;
+        }
+        if (QGuiApplication::platformName() == QStringLiteral("xcb")) {
+            QTest::mouseClick(&panel, Qt::LeftButton, Qt::NoModifier, pin->mapToScene(pin->boundingRect().center()).toPoint());
+            QTest::qWait(100);
+            if (!item->property("systemTrayState").value<QObject *>()->property("activeApplet").value<QObject *>()) {
+                qCritical("The pinned module did not open its original KDE view"); app.exit(30); return;
+            }
+        }
+        capture(&panel, QStringLiteral("panel-pinned"));
+        QMetaObject::invokeMethod(item, "showHome", Q_ARG(QVariant, QVariant(QStringLiteral("controls"))));
+        QMetaObject::invokeMethod(item, "setTrayVisibility", Q_ARG(QVariant, QVariant(QStringLiteral("org.kde.plasma.clipboard"))), Q_ARG(QVariant, QVariant(QStringLiteral("auto"))));
+        QMetaObject::invokeMethod(item, "setControlVisible", Q_ARG(QVariant, QVariant(QStringLiteral("org.kde.plasma.clipboard"))), Q_ARG(QVariant, QVariant(true)));
+        QTest::qWait(100);
+        if (visualChild(item, QStringLiteral("pinnedControl_org.kde.plasma.clipboard"))) {
+            qCritical("An unpinned control remained in the panel"); app.exit(31); return;
+        }
 
         auto *volume = visualChild(popup->contentItem(), QStringLiteral("volumeControl"));
         auto *brightness = visualChild(popup->contentItem(), QStringLiteral("brightnessControl"));

@@ -66,10 +66,11 @@ PlasmaComponents.Frame {
                 }
                 contentItem: RowLayout {
                     spacing: Kirigami.Units.smallSpacing
-                    Kirigami.Icon {
+                    ControlIcon {
                         Layout.preferredWidth: Kirigami.Units.iconSizes.medium
                         Layout.preferredHeight: Kirigami.Units.iconSizes.medium
                         source: tile.entry.icon
+                        controlId: tile.entry.id
                     }
                     PlasmaComponents.Label {
                         Layout.fillWidth: true

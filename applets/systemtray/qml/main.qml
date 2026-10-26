@@ -27,6 +27,7 @@ ContainmentItem {
     readonly property alias hiddenLayout: expandedRepresentation.hiddenLayout
     readonly property alias hiddenModel: hiddenModel
     readonly property bool oneRowOrColumn: tasksGrid.rowsOrColumns === 1
+    readonly property int panelCellLength: root.vertical ? tasksGrid.cellHeight : tasksGrid.cellWidth
     property string popupMode: "controls"
     property bool editing: false
     property bool notificationsOpen: false
@@ -37,6 +38,8 @@ ContainmentItem {
 
     Layout.minimumWidth: mainLayout.implicitWidth
     Layout.minimumHeight: mainLayout.implicitHeight
+    Layout.preferredWidth: mainLayout.implicitWidth
+    Layout.preferredHeight: mainLayout.implicitHeight
     LayoutMirroring.enabled: !vertical && ((Application.layoutDirection === Qt.RightToLeft) !== reverseLayout)
     LayoutMirroring.childrenInherit: true
 
@@ -70,6 +73,9 @@ ContainmentItem {
         if (visible && !Plasmoid.configuration.extraItems.includes(id)) {
             Plasmoid.configuration.extraItems = Plasmoid.configuration.extraItems.concat([id]);
         }
+    }
+    function isControlPinned(id) {
+        return Plasmoid.configuration.showAllItems || Plasmoid.configuration.shownItems.includes(id);
     }
     function moveControl(id, before) {
         const order = controlEntries.map(entry => entry.id);
@@ -165,6 +171,15 @@ ContainmentItem {
             required property var applet
             parent: appletStorage
             visible: false
+            function hideOriginalNotificationIcon() {
+                if (itemId !== "org.kde.plasma.notifications" || !applet) return;
+                applet.opacity = 0;
+                if (applet.compactRepresentationItem) {
+                    // AppletQuickItem may reparent this outside its own root.
+                    applet.compactRepresentationItem.opacity = 0;
+                    applet.compactRepresentationItem.enabled = false;
+                }
+            }
             function adopt() {
                 if (itemId === "org.kde.plasma.notifications") {
                     // Keep the original compact item's screen geometry at the
@@ -177,11 +192,16 @@ ContainmentItem {
                     applet.parent = host;
                     applet.anchors.fill = host;
                     applet.visible = true;
+                    // AppletQuickItem can restore compact visibility itself.
+                    // Keep notification geometry for toast placement without
+                    // painting its original bell over our own button.
+                    hideOriginalNotificationIcon();
                 }
                 root.registerHost(itemId, host);
             }
             onAppletChanged: adopt()
             onDisplayTextChanged: root.refreshControls()
+            onDecorationChanged: root.refreshControls()
             Component.onCompleted: adopt()
             Component.onDestruction: root.unregisterHost(itemId, host)
             Connections {
@@ -197,6 +217,7 @@ ContainmentItem {
                 function onFullRepresentationItemChanged() {
                     if (host.itemId === "org.kde.plasma.notifications") notificationContent.adopt();
                 }
+                function onCompactRepresentationItemChanged() { host.hideOriginalNotificationIcon(); }
             }
         }
     }
@@ -217,9 +238,13 @@ ContainmentItem {
     }
     GridLayout {
         id: mainLayout
-        anchors.fill: parent
-        rowSpacing: Kirigami.Units.smallSpacing
-        columnSpacing: Kirigami.Units.smallSpacing
+        // Use the same cells as the SNI grid. Extra host space stays outside
+        // the row instead of being distributed between unlike implicit sizes.
+        anchors.centerIn: parent
+        width: root.vertical ? root.width : implicitWidth
+        height: root.vertical ? implicitHeight : root.height
+        rowSpacing: 0
+        columnSpacing: 0
         flow: root.vertical ? GridLayout.TopToBottom : GridLayout.LeftToRight
         rows: root.vertical ? -1 : 1
         columns: root.vertical ? 1 : -1
@@ -259,10 +284,66 @@ ContainmentItem {
                 }
             }
         }
+        Repeater {
+            model: root.controlEntries.filter(entry => root.isControlPinned(entry.id))
+            delegate: PanelButton {
+                id: pinnedButton
+                required property var modelData
+                objectName: "pinnedControl_" + modelData.id
+                Layout.fillWidth: root.vertical
+                Layout.fillHeight: !root.vertical
+                Layout.preferredWidth: root.vertical ? -1 : root.panelCellLength
+                Layout.preferredHeight: root.vertical ? root.panelCellLength : -1
+                iconSize: tasksGrid.itemSize
+                text: modelData.title
+                checked: systemTrayState.expanded && modelData.applet !== null && systemTrayState.activeApplet === modelData.applet
+                enabled: modelData.applet !== null
+                onClicked: {
+                    if (checked) systemTrayState.expanded = false;
+                    else root.openControl(modelData.applet);
+                }
+                contentItem: Item {
+                    Item {
+                        id: nativeSlot
+                        anchors.centerIn: parent
+                        width: pinnedButton.iconSize
+                        height: pinnedButton.iconSize
+                        ControlIcon {
+                            anchors.fill: parent
+                            source: pinnedButton.modelData.icon
+                            controlId: pinnedButton.modelData.id
+                            visible: !pinnedButton.modelData.applet?.compactRepresentationItem
+                                && !pinnedButton.modelData.applet?.fullRepresentationItem
+                        }
+                    }
+                }
+                // Keep the original compact view and its interactions, including
+                // text input-method indicators and module-specific wheel actions.
+                function adopt() {
+                    const host = root.hosts[modelData.id];
+                    if (!host) return;
+                    host.parent = nativeSlot;
+                    host.anchors.fill = nativeSlot;
+                    host.visible = true;
+                }
+                onModelDataChanged: adopt()
+                Component.onCompleted: adopt()
+                Component.onDestruction: {
+                    const host = root.hosts[modelData.id];
+                    if (host && host.parent === nativeSlot) {
+                        host.visible = false;
+                        host.parent = appletStorage;
+                    }
+                }
+            }
+        }
         ExpanderArrow {
             id: expander
+            objectName: "expanderButton"
             Layout.fillWidth: root.vertical
             Layout.fillHeight: !root.vertical
+            Layout.preferredWidth: root.vertical ? -1 : root.panelCellLength
+            Layout.preferredHeight: root.vertical ? root.panelCellLength : -1
             iconSize: tasksGrid.itemSize
             visible: hiddenModel.count > 0 || activeModel.count > 0
             DropArea {
@@ -281,36 +362,41 @@ ContainmentItem {
             }
             Timer { id: revealTimer; interval: 450; onTriggered: root.showHome("applications") }
         }
-        PlasmaComponents.ToolButton {
+        PanelButton {
             id: controlsButton
             objectName: "controlsButton"
             Layout.fillWidth: root.vertical
             Layout.fillHeight: !root.vertical
-            icon.name: "preferences-system"
+            Layout.preferredWidth: root.vertical ? -1 : root.panelCellLength
+            Layout.preferredHeight: root.vertical ? root.panelCellLength : -1
+            iconSize: tasksGrid.itemSize
+            glyphSource: Qt.resolvedUrl("icons/hub-control-center.svg")
             text: i18n("Control Center")
-            display: PlasmaComponents.AbstractButton.IconOnly
             checked: systemTrayState.expanded && root.popupMode === "controls"
             onClicked: root.toggleHome("controls")
-            PlasmaComponents.ToolTip { text: controlsButton.text }
         }
-        PlasmaComponents.ToolButton {
+        PanelButton {
             id: notificationsButton
             objectName: "notificationsButton"
             Layout.fillWidth: root.vertical
             Layout.fillHeight: !root.vertical
-            icon.name: root.notificationsApplet?.inhibitedOrBroken ? "notifications-disabled-symbolic" : "view-conversation-balloon-symbolic"
+            Layout.preferredWidth: root.vertical ? -1 : root.panelCellLength
+            Layout.preferredHeight: root.vertical ? root.panelCellLength : -1
+            iconSize: tasksGrid.itemSize
+            glyphSource: root.notificationsApplet?.inhibitedOrBroken
+                ? Qt.resolvedUrl("icons/hub-notifications-paused.svg")
+                : Qt.resolvedUrl("icons/hub-notifications.svg")
             text: root.unreadCount > 0 ? i18np("%1 unread notification", "%1 unread notifications", root.unreadCount) : i18n("Notifications")
-            display: PlasmaComponents.AbstractButton.IconOnly
             checked: root.notificationsOpen
             enabled: root.notificationsApplet !== null
             onClicked: {
                 if (root.notificationsOpen) root.notificationsOpen = false;
                 else root.openNotifications();
             }
-            PlasmaComponents.ToolTip { text: notificationsButton.text }
             Kirigami.Badge {
                 anchors.top: parent.top
                 anchors.right: parent.right
+                anchors.topMargin: Math.max(0, (notificationsButton.height - notificationsButton.iconSize) / 2 - height / 3)
                 visible: root.unreadCount > 0
                 text: root.unreadCount > 99 ? "99+" : root.unreadCount
             }

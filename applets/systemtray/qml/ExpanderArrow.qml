@@ -1,113 +1,28 @@
 /*
     SPDX-FileCopyrightText: 2013 Sebastian Kügler <sebas@kde.org>
     SPDX-FileCopyrightText: 2015 Marco Martin <mart@kde.org>
-
+    SPDX-FileCopyrightText: 2026 Eirom16
     SPDX-License-Identifier: LGPL-2.0-or-later
 */
-
 import QtQuick
-
-import org.kde.kirigami as Kirigami
 import org.kde.plasma.core as PlasmaCore
 import org.kde.plasma.plasmoid
 
-PlasmaCore.ToolTipArea {
-    id: tooltip
-
+PanelButton {
+    id: button
     readonly property bool drawerOpen: systemTrayState.expanded && root.popupMode === "applications"
-    readonly property int arrowAnimationDuration: Kirigami.Units.shortDuration
-    property bool vertical: Plasmoid.formFactor === PlasmaCore.Types.Vertical
-    property int iconSize: Kirigami.Units.iconSizes.smallMedium
-    implicitWidth: iconSize
-    implicitHeight: iconSize
-    activeFocusOnTab: true
-
-    Accessible.name: subText
+    glyphSource: Qt.resolvedUrl("icons/hub-chevron-up.svg")
+    glyphRotation: {
+        const direction = Plasmoid.location === PlasmaCore.Types.TopEdge ? 180
+            : Plasmoid.location === PlasmaCore.Types.LeftEdge ? 90
+            : Plasmoid.location === PlasmaCore.Types.RightEdge ? -90 : 0;
+        return direction + (drawerOpen ? 180 : 0);
+    }
+    text: drawerOpen ? i18n("Close popup") : i18n("Show hidden icons")
     Accessible.description: i18n("Show all the items in the system tray in a popup")
-    Accessible.role: Accessible.Button
-    Accessible.onPressAction: root.toggleHome("applications")
-
-    Keys.onPressed: event => {
-        switch (event.key) {
-        case Qt.Key_Space:
-        case Qt.Key_Enter:
-        case Qt.Key_Return:
-        case Qt.Key_Select:
-            root.toggleHome("applications");
-        }
-    }
-
-    subText: tooltip.drawerOpen ? i18n("Close popup") : i18n("Show hidden icons")
-
-    property bool wasExpanded
-
-    TapHandler {
-        onPressedChanged: {
-            if (pressed) {
-                tooltip.wasExpanded = tooltip.drawerOpen;
-            }
-        }
-        onTapped: (eventPoint, button) => {
-            root.toggleHome("applications");
-            expandedRepresentation.hiddenLayout.currentIndex = -1;
-        }
-    }
-
-    Kirigami.Icon {
-        anchors.fill: parent
-
-        rotation: tooltip.drawerOpen ? 180 : 0
-        Behavior on rotation {
-            RotationAnimation {
-                duration: tooltip.arrowAnimationDuration
-            }
-        }
-        opacity: tooltip.drawerOpen ? 0 : 1
-        Behavior on opacity {
-            NumberAnimation {
-                duration: tooltip.arrowAnimationDuration
-            }
-        }
-
-        source: {
-            if (Plasmoid.location === PlasmaCore.Types.TopEdge) {
-                return "arrow-down-symbolic";
-            } else if (Plasmoid.location === PlasmaCore.Types.LeftEdge) {
-                return "arrow-right-symbolic";
-            } else if (Plasmoid.location === PlasmaCore.Types.RightEdge) {
-                return "arrow-left-symbolic";
-            } else {
-                return "arrow-up-symbolic";
-            }
-        }
-    }
-
-    Kirigami.Icon {
-        anchors.fill: parent
-
-        rotation: tooltip.drawerOpen ? 0 : -180
-        Behavior on rotation {
-            RotationAnimation {
-                duration: tooltip.arrowAnimationDuration
-            }
-        }
-        opacity: tooltip.drawerOpen ? 1 : 0
-        Behavior on opacity {
-            NumberAnimation {
-                duration: tooltip.arrowAnimationDuration
-            }
-        }
-
-        source: {
-            if (Plasmoid.location === PlasmaCore.Types.TopEdge) {
-                return "arrow-up-symbolic";
-            } else if (Plasmoid.location === PlasmaCore.Types.LeftEdge) {
-                return "arrow-left-symbolic";
-            } else if (Plasmoid.location === PlasmaCore.Types.RightEdge) {
-                return "arrow-right-symbolic";
-            } else {
-                return "arrow-down-symbolic";
-            }
-        }
+    checked: drawerOpen
+    onClicked: {
+        root.toggleHome("applications");
+        expandedRepresentation.hiddenLayout.currentIndex = -1;
     }
 }

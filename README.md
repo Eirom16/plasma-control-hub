@@ -4,6 +4,8 @@ Bandeja del sistema, centro de control editable y notificaciones laterales para 
 
 ![Centro de control nativo](docs/screenshots/control-center.png)
 
+![Botones y alineación en el panel](docs/screenshots/panel-dark.png)
+
 [Editor de controles](docs/screenshots/editor.png) · [Bandeja de aplicaciones](docs/screenshots/tray.png) · [Notificaciones laterales](docs/screenshots/notifications.png)
 
 Las capturas proceden de una sesión aislada: algunos servicios, incluido PowerDevil, no están ejecutándose y aparecen como no disponibles.
@@ -15,7 +17,9 @@ Las capturas proceden de una sesión aislada: algunos servicios, incluido PowerD
 - Brillo y volumen quedan fijos al pie del panel, fuera de la cuadrícula desplazable, con botones para abrir todas sus opciones originales. Sus deslizadores utilizan los módulos de KDE instalados.
 - «Editar» permite mostrar, quitar y ordenar controles. El orden y la selección se guardan por instancia del widget.
 - Las aplicaciones permanecen en la bandeja o en el desplegable de la flecha. Se pueden mover por arrastre y configurar desde el menú contextual. Mayús+F10 alterna la visibilidad del icono enfocado.
+- En la configuración original del widget, **Entradas → Mostrar siempre** coloca también cualquier módulo de KDE en la barra: método de entrada, teclado, Bluetooth, etc. Conserva su representación compacta original y sus interacciones. «Editar» sigue dedicado a la distribución del centro de control.
 - El botón de notificaciones abre el historial original en el borde derecho. La ventana usa el estilo de Plasma y solicita a KWin la animación desde la derecha.
+- Flecha, centro y notificaciones comparten tamaño de celda y símbolos SVG propios, coloreados por Plasma. Las opciones sin icono disponible reciben un símbolo de reserva propio.
 - Las funciones detalladas y la configuración de cada módulo siguen perteneciendo a los plasmoides originales.
 
 Es un proyecto independiente y experimental, no un componente oficial de KDE. Consulta [la procedencia del código](UPSTREAM.md), [la arquitectura](docs/architecture.md) y [las comprobaciones](docs/validation.md).

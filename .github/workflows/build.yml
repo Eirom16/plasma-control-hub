@@ -10,7 +10,7 @@ jobs:
     container: archlinux:base-devel
     steps:
       - name: Install KDE and build dependencies
-        run: pacman -Syu --noconfirm --needed git cmake ninja extra-cmake-modules qt6-base qt6-declarative qt6-tools qt6-wayland wayland plasma-workspace plasma-nm bluedevil plasma-pa powerdevil gettext dbus python libxtst xorg-server-xvfb xorg-xauth
+        run: pacman -Syu --noconfirm --needed git cmake ninja extra-cmake-modules qt6-base qt6-declarative qt6-tools qt6-wayland wayland plasma-workspace plasma-desktop plasma-nm bluedevil plasma-pa powerdevil gettext dbus python libxtst xorg-server-xvfb xorg-xauth
       - uses: actions/checkout@v6
       - name: Configure
         run: cmake -S . -B build -G Ninja -DCMAKE_BUILD_TYPE=Release -DBUILD_TESTING=ON
