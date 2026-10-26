@@ -455,8 +455,16 @@ ContainmentItem {
         mainItem: NotificationContent {
             id: notificationContent
             applet: root.notificationsApplet
-            width: Math.max(1, Math.min(Kirigami.Units.gridUnit * 24, notificationDrawer.availableGeometry.width - notificationDrawer.margins.left - notificationDrawer.margins.right))
-            height: Math.max(1, notificationDrawer.availableGeometry.height - notificationDrawer.margins.top - notificationDrawer.margins.bottom)
+            // Native dialog margins can change while its Wayland surface is
+            // being resized. Apply after that update to avoid a size feedback loop.
+            Binding on width {
+                value: Math.max(1, Math.min(Kirigami.Units.gridUnit * 24, notificationDrawer.availableGeometry.width - notificationDrawer.margins.left - notificationDrawer.margins.right))
+                delayed: true
+            }
+            Binding on height {
+                value: Math.max(1, notificationDrawer.availableGeometry.height - notificationDrawer.margins.top - notificationDrawer.margins.bottom)
+                delayed: true
+            }
             onCloseRequested: root.notificationsOpen = false
         }
     }
